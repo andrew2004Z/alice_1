@@ -1,11 +1,16 @@
 from flask import Flask, request
 import logging
 import json
+import os
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
 sessionStorage = {}
+targets = {
+    0: ['слона', 'слон'],
+    1: ['кролика', 'кролик'],
+}
 
 
 @app.route('/post', methods=['POST'])
@@ -30,14 +35,9 @@ def handle_dialog(req, res):
 
     if req['session']['new']:
         sessionStorage[user_id] = {
-            'suggests': [
-                "Не хочу.",
-                "Не буду.",
-                "Отстань!",
-            ]
+            'target': 0,
         }
         res['response']['text'] = 'Привет! Купи слона!'
-        res['response']['buttons'] = get_suggests(user_id)
         return
 
     good_words = [
@@ -46,40 +46,27 @@ def handle_dialog(req, res):
         'покупаю',
         'хорошо'
     ]
-    if any([i in good_words for i in req['request']['original_utterance'].lower().split()]):
-        res['response']['text'] = 'Слона можно найти на Яндекс.Маркете!'
-        res['response']['end_session'] = True
+    if any([i in good_words
+            for i in req['request']['original_utterance'].lower().split()]):
+        res['response']['text'] = targets[sessionStorage[
+            user_id]['target']][0].capitalize()
+        res['response']['text'] += ' можно найти на Яндекс.Маркете!'
+        sessionStorage[user_id]['target'] += 1
+        if sessionStorage[user_id]['target'] == 1:
+            res['response']['text'] += ' А теперь купи кролика!'
+        elif sessionStorage[user_id]['target'] == 2:
+            res['response']['end_session'] = True
         return
 
     res['response']['text'] = offer_elephant(
-        req['request']['original_utterance'])
-    res['response']['buttons'] = get_suggests(user_id)
+        req['request']['original_utterance'],
+        sessionStorage[user_id]['target'])
 
 
-def offer_elephant(text):
-    return f"Все говорят '{text}', а ты купи слона!"
-
-
-def get_suggests(user_id):
-    session = sessionStorage[user_id]
-
-    suggests = [
-        {'title': suggest, 'hide': True}
-        for suggest in session['suggests'][:2]
-    ]
-
-    session['suggests'] = session['suggests'][1:]
-    sessionStorage[user_id] = session
-
-    if len(suggests) < 2:
-        suggests.append({
-            "title": "Ладно",
-            "url": "https://market.yandex.ru/search?text=слон",
-            "hide": True
-        })
-
-    return suggests
+def offer_elephant(text, target_):
+    return f"Все говорят '{text}', а ты купи {targets[target_][0]}!"
 
 
 if __name__ == '__main__':
-    app.run()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='127.0.0.0', port=port)
